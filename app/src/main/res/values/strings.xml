@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Barcode Lookup</string>
+    <string name="wifi_title">Wi-Fi:</string>
+    <string name="wifi_linkspeed_title">Linkspeed:</string>
+    <string name="wifi_ssid_title">SSID:</string>
+    <string name="wifi_rssi_title">RSSI:</string>
+    <string name="wifi_ssid">--</string>
+    <string name="wifi_rssi">0</string>
+    <string name="wifi_linkspeed">0</string>
+    <string name="barcode">--Barcode--</string>
+    <string name="CONNECTING_TITLE">Lookup</string>
+    <string name="CONNECTING_MSG">Loading...</string>
+    <string name="TIMEOUT_MSG">Timed out</string>
+    <string name="SERVER_ERROR_MESSAGE">Server error</string>
+    <string name="TIMEOUT_TITLE">Timeout</string>
+    <string name="SERVER_ERROR_TITLE">Error</string>
+    <string name="RETRY">Retry</string>
+    <string name="CANCEL">Cancel</string>
+    <string name="NOT_CONNECTED">No connection</string>
+</resources>
