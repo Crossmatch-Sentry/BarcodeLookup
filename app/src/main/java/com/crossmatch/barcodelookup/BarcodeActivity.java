@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
@@ -12,28 +14,29 @@ import android.net.wifi.WifiManager;
 import android.os.Handler;
 import android.os.Message;
 import android.os.PowerManager;
+import android.preference.PreferenceManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.Window;
-import android.webkit.WebChromeClient;
 import android.webkit.*;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.Toolbar;
 
 import com.crossmatch.libbarcode.LibBarcode;
 import com.crossmatch.libbarcode.LibBarcode.Devices;
 
 import java.util.Timer;
-import java.util.TimerTask;
 
 public class BarcodeActivity extends AppCompatActivity {
 
     private static final String LOG_TAG = "BarcodeActivity";
-    private static String lookupBaseURL = "http://athena.cmacu.net/cgi-bin/vmwmsgs.pl?command=Retrieve&name=wanted.jpg";
+    //private static String lookupBaseURL = "http://athena.cmacu.net/cgi-bin/vmwmsgs.pl?command=Retrieve&name=wanted.jpg";
 
-    private int pageTimeout = 5;     // how long to wait (in seconds) for the image to load
+    private int pageTimeout = 10;     // how long to wait (in seconds) for the image to load
 
     private TextView barcodeText;
     public static LibBarcode lb;
@@ -71,6 +74,9 @@ public class BarcodeActivity extends AppCompatActivity {
         //Toolbar toolbar = findViewById(R.id.toolbar);
 
         Log.i(LOG_TAG, "Barcode Lookup starting");
+
+        PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
+
         barcodeText = (TextView) findViewById(R.id.console);
         //barcodeText.setText("Barcode Lookup");
         rssiText = (TextView) findViewById(R.id.textViewrssi);
@@ -152,9 +158,34 @@ public class BarcodeActivity extends AppCompatActivity {
 
     }
 
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.settings_menu,menu);
+        return super.onCreateOptionsMenu(menu);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        Toast.makeText(this,"Selected item: "+item.getTitle(), Toast.LENGTH_SHORT).show();
+        switch (item.getItemId()) {
+            case R.id.settings:
+                Log.i(LOG_TAG, "Launch Settings menu");
+                Intent intent = new Intent(this, SettingsActivity.class);
+                startActivity(intent);
+
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+
+        }
+    }
+
     private void DisplayImageURL(String barcode) {
-        StringBuilder url = new StringBuilder(lookupBaseURL);
-        url.append("&SerialNum=");
+        SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
+        String host = sharedPref.getString(getString(R.string.pref_url_key), "athena.cmacu.net");
+        StringBuilder url = new StringBuilder(host);
+        url.append("/cgi-bin/vmwmsgs.pl?command=Retrieve&name=wanted.jpg&SerialNum=");
         url.append(barcode);
         Log.i(LOG_TAG,"URL: "+url.toString());
         webViewClient = new LookupWebViewClient(pageTimeout);
@@ -203,6 +234,7 @@ public class BarcodeActivity extends AppCompatActivity {
 
         @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            Log.i(LOG_TAG,"onPageStarted: hasError = "+hasError);
             super.onPageStarted(view, url, favicon);
             if (hasError) {
                 return;
@@ -222,6 +254,7 @@ public class BarcodeActivity extends AppCompatActivity {
                     dismissProgress();
                     dismissErrorAlert();
                     if (!pageLoaded) {
+                        Log.e(LOG_TAG,"Page timed-out");
                         showTimeoutAlert();
                     }
                 }
@@ -231,6 +264,7 @@ public class BarcodeActivity extends AppCompatActivity {
 
         @Override
         public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+            Log.e(LOG_TAG,"onReceivedError detected");
             // Ignore future callbacks because the page load has failed
             hasError = true;
             dismissProgress();
@@ -239,6 +273,7 @@ public class BarcodeActivity extends AppCompatActivity {
 
         @Override
         public void onPageFinished(WebView view, String url) {
+            Log.i(LOG_TAG,"onPageFinished detected");
             if (hasError) {
                 return;
             }
@@ -266,6 +301,7 @@ public class BarcodeActivity extends AppCompatActivity {
                     .setPositiveButton(R.string.RETRY, new DialogInterface.OnClickListener() {
                         public void onClick(DialogInterface dialog, int id) {
                             // Try to load url again
+                            Log.i(LOG_TAG,"Try to reload page");
                             loadUrl(urlLoading);
                             dialog.dismiss();
                         }
@@ -274,7 +310,7 @@ public class BarcodeActivity extends AppCompatActivity {
                 public void onClick(DialogInterface dialog, int id) {
                     // User cancelled the dialog
                     //setSigninFailureResult();
-                    //loadUrl("about:blank");
+                    loadUrl("about:blank");
                     dialog.cancel();
                 }
             });

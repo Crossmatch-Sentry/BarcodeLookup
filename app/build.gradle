@@ -1,6 +1,14 @@
 apply plugin: 'com.android.application'
 
 android {
+    signingConfigs {
+        Sentry {
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+            storeFile file('/home/dkilp/Projects/Claimcheck/keystore/claimcheck.keystore')
+            storePassword 'android'
+        }
+    }
     compileSdkVersion 27
     defaultConfig {
         applicationId "com.crossmatch.barcodelookup"
@@ -14,6 +22,10 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.Sentry
+        }
+        debug {
+            signingConfig signingConfigs.Sentry
         }
     }
     productFlavors {
@@ -25,6 +37,7 @@ dependencies {
     implementation project(':libbarcode_v1.3.16.31')
     implementation project(':barcode_scanner_library_v2.1.4.0')
     implementation 'com.android.support:appcompat-v7:27.1.1'
+    implementation 'com.android.support:preference-v7:27.1.1'
     implementation 'com.android.support.constraint:constraint-layout:1.1.0'
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'com.android.support.test:runner:1.0.2'

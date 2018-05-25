@@ -17,4 +17,9 @@
     <string name="RETRY">Retry</string>
     <string name="CANCEL">Cancel</string>
     <string name="NOT_CONNECTED">No connection</string>
+    <string name="pref_url_key">url_preference</string>
+    <string name="url_title">Server Name</string>
+    <string name="url_summary">hostname or IP address</string>
+    <string name="title_activity_settings">Settings</string>
+    <string name="default_url">http://athena.cmacu.net</string>
 </resources>
