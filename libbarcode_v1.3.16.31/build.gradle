@@ -1,2 +1,0 @@
-configurations.maybeCreate("default")
-artifacts.add("default", file('libbarcode_v1.3.16.31.aar'))
