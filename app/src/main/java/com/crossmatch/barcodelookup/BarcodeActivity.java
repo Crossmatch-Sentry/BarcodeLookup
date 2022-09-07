@@ -1,46 +1,89 @@
 package com.crossmatch.barcodelookup;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.os.PowerManager;
 import android.preference.PreferenceManager;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.View;
 import android.view.Window;
+import android.view.WindowManager;
 import android.webkit.*;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.crossmatch.libbarcode.LibBarcode;
-import com.crossmatch.libbarcode.LibBarcode.Devices;
-
 import java.util.Timer;
+import java.util.Set;
 
-public class BarcodeActivity extends AppCompatActivity {
+import static android.provider.ContactsContract.Intents.Insert.ACTION;
+
+public class BarcodeActivity extends AppCompatActivity implements Runnable {
 
     private static final String LOG_TAG = "BarcodeActivity";
     //private static String lookupBaseURL = "http://athena.cmacu.net/cgi-bin/vmwmsgs.pl?command=Retrieve&name=wanted.jpg";
 
+    // This is the name we are going to register with the Zebra DataWedge
+    private static final String EXTRA_PROFILENAME = "BarcodeLookup";
+
+    // Zebra DataWedge Extras
+    private static final String EXTRA_GET_VERSION_INFO = "com.symbol.datawedge.api.GET_VERSION_INFO";
+    private static final String EXTRA_CREATE_PROFILE = "com.symbol.datawedge.api.CREATE_PROFILE";
+    private static final String EXTRA_KEY_APPLICATION_NAME = "com.symbol.datawedge.api.APPLICATION_NAME";
+    private static final String EXTRA_KEY_NOTIFICATION_TYPE = "com.symbol.datawedge.api.NOTIFICATION_TYPE";
+    private static final String EXTRA_SOFT_SCAN_TRIGGER = "com.symbol.datawedge.api.SOFT_SCAN_TRIGGER";
+    private static final String EXTRA_RESULT_NOTIFICATION = "com.symbol.datawedge.api.NOTIFICATION";
+    private static final String EXTRA_REGISTER_NOTIFICATION = "com.symbol.datawedge.api.REGISTER_FOR_NOTIFICATION";
+    private static final String EXTRA_UNREGISTER_NOTIFICATION = "com.symbol.datawedge.api.UNREGISTER_FOR_NOTIFICATION";
+    private static final String EXTRA_SET_CONFIG = "com.symbol.datawedge.api.SET_CONFIG";
+
+    private static final String EXTRA_RESULT_NOTIFICATION_TYPE = "NOTIFICATION_TYPE";
+    private static final String EXTRA_KEY_VALUE_SCANNER_STATUS = "SCANNER_STATUS";
+    private static final String EXTRA_KEY_VALUE_PROFILE_SWITCH = "PROFILE_SWITCH";
+    private static final String EXTRA_KEY_VALUE_CONFIGURATION_UPDATE = "CONFIGURATION_UPDATE";
+    private static final String EXTRA_KEY_VALUE_NOTIFICATION_STATUS = "STATUS";
+    private static final String EXTRA_KEY_VALUE_NOTIFICATION_PROFILE_NAME = "PROFILE_NAME";
+    private static final String EXTRA_SEND_RESULT = "SEND_RESULT";
+
+    private static final String EXTRA_EMPTY = "";
+
+    private static final String EXTRA_RESULT_GET_VERSION_INFO = "com.symbol.datawedge.api.RESULT_GET_VERSION_INFO";
+    private static final String EXTRA_RESULT = "RESULT";
+    private static final String EXTRA_RESULT_INFO = "RESULT_INFO";
+    private static final String EXTRA_COMMAND = "COMMAND";
+
+    // Zebra DataWedge Actions
+    private static final String ACTION_DATAWEDGE = "com.symbol.datawedge.api.ACTION";
+    private static final String ACTION_RESULT_NOTIFICATION = "com.symbol.datawedge.api.NOTIFICATION_ACTION";
+    private static final String ACTION_RESULT = "com.symbol.datawedge.api.RESULT_ACTION";
+
+
+    // private variables
+    private Boolean bRequestSendResult = false;
     private int pageTimeout = 10;     // how long to wait (in seconds) for the image to load
+    volatile boolean autoScanThread = false;
+    Thread tAutoScan;
 
     private TextView barcodeText;
-    public static LibBarcode lb;
-    public static BarcodeListener bl;
+    private Button singleScanButton;
+    private Button autoScanButton;
     public static Handler uiUpdateHandler;
 
     public static final int MESSAGE_BARCODE_STRING = 1;
@@ -77,18 +120,22 @@ public class BarcodeActivity extends AppCompatActivity {
 
         PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
 
-        barcodeText = (TextView) findViewById(R.id.console);
+        barcodeText = findViewById(R.id.lblScanData);
         //barcodeText.setText("Barcode Lookup");
-        rssiText = (TextView) findViewById(R.id.textViewrssi);
-        ssidText = (TextView)findViewById(R.id.textViewssid);
-        linkspeedText = (TextView)findViewById(R.id.textViewspeed);
-        myWebView = (WebView)findViewById(R.id.webview);
+        rssiText = findViewById(R.id.textViewrssi);
+        ssidText = findViewById(R.id.textViewssid);
+        linkspeedText = findViewById(R.id.textViewspeed);
+        myWebView = findViewById(R.id.webview);
+        singleScanButton = findViewById(R.id.scan_button);
+        autoScanButton = findViewById(R.id.autoscan_btn);
 
-        if (lb != null) lb.close();
-        lb = new LibBarcode(this, Devices.BARCODE_JE227);
+        // Keep screen on while this app is running
+        this.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        // setup wakelock for later
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        wl = pm.newWakeLock(PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "CMBARCODE");
+        wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "CMBARCODE:hidwl");
+
 
         wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
 
@@ -120,7 +167,7 @@ public class BarcodeActivity extends AppCompatActivity {
                     case MESSAGE_BARCODE_STRING:
                         Log.i(LOG_TAG, "handleMessage writing text ");
                         String barcode = (String) msg.obj;
-                        barcodeText.setText(barcode);
+                        //barcodeText.setText(barcode);
                         DisplayImageURL(barcode);
 
                         wl.acquire(10000);
@@ -154,7 +201,23 @@ public class BarcodeActivity extends AppCompatActivity {
             }
         });
 
-        bl = new BarcodeListener(this, uiUpdateHandler);
+        // Register for status change notification
+        // Use REGISTER_FOR_NOTIFICATION: http://techdocs.zebra.com/datawedge/latest/guide/api/registerfornotification/
+        Bundle b = new Bundle();
+        b.putString(EXTRA_KEY_APPLICATION_NAME, getPackageName());
+        b.putString(EXTRA_KEY_NOTIFICATION_TYPE, "SCANNER_STATUS");     // register for changes in scanner status
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_REGISTER_NOTIFICATION, b);
+
+        registerReceivers();
+
+        // Get DataWedge version
+        // Use GET_VERSION_INFO: http://techdocs.zebra.com/datawedge/latest/guide/api/getversioninfo/
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_GET_VERSION_INFO, EXTRA_EMPTY);    // must be called after registering BroadcastReceiver
+
+        //bl = new BarcodeListener(this, uiUpdateHandler);
+        //ConfigureZebraScanner();
+        CreateZebraDWProfile();
+
 
     }
 
@@ -181,13 +244,176 @@ public class BarcodeActivity extends AppCompatActivity {
         }
     }
 
+    public void startThread ()
+    {
+        tAutoScan = new Thread(this);
+        autoScanThread = true;
+        tAutoScan.start();
+    }
+
+    public void run() {
+        Log.i(LOG_TAG, "Background timer thread starts: "+ autoScanThread);
+
+        SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
+        String scantime = sharedPref.getString(getString(R.string.pref_scantime_key), "60");
+
+        while(autoScanThread) {
+            Log.i(LOG_TAG,"Start new scan every " +  scantime + " seconds");
+            sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SOFT_SCAN_TRIGGER, "TOGGLE_SCANNING");
+            try {
+                Thread.sleep(Integer.parseInt(scantime) * 1000L);
+            } catch (InterruptedException e) {
+                Log.i(LOG_TAG,"Thread sleep timed out");
+            }
+        }
+        Log.i(LOG_TAG,"Background thread complete");
+
+    }
+
+    // Toggle soft scan trigger from UI onClick() event
+    // Use SOFT_SCAN_TRIGGER: http://techdocs.zebra.com/datawedge/latest/guide/api/softscantrigger/
+    public void AutoScanEnable (View view){
+        Log.i(LOG_TAG,"Enabling auto scan...");
+        if (autoScanThread) {
+            Log.i(LOG_TAG,"Stopping auto scan...");
+            autoScanButton.setText(R.string.autoscan_start_btn);
+            singleScanButton.setEnabled(true);
+            autoScanThread = false;
+        } else {
+            Log.i(LOG_TAG,"Starting auto scan...");
+            autoScanButton.setText(R.string.autoscan_stop_btn);
+            singleScanButton.setEnabled(false);
+            startThread();
+        }
+    }
+
+    private void CreateZebraDWProfile() {
+        // Send DataWedge intent with extra to create profile
+        // Use CREATE_PROFILE: http://techdocs.zebra.com/datawedge/latest/guide/api/createprofile/
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_CREATE_PROFILE, EXTRA_PROFILENAME);
+
+        // Configure created profile to apply to this app
+        Bundle profileConfig = new Bundle();
+        profileConfig.putString("PROFILE_NAME", EXTRA_PROFILENAME);
+        profileConfig.putString("PROFILE_ENABLED", "true");
+        profileConfig.putString("CONFIG_MODE", "CREATE_IF_NOT_EXIST");  // Create profile if it does not exist
+
+        // Configure barcode input plugin
+        Bundle barcodeConfig = new Bundle();
+        barcodeConfig.putString("PLUGIN_NAME", "BARCODE");
+        barcodeConfig.putString("RESET_CONFIG", "true"); //  This is the default
+        Bundle barcodeProps = new Bundle();
+        barcodeConfig.putBundle("PARAM_LIST", barcodeProps);
+        profileConfig.putBundle("PLUGIN_CONFIG", barcodeConfig);
+
+        // Associate profile with this app
+        Bundle appConfig = new Bundle();
+        appConfig.putString("PACKAGE_NAME", getPackageName());
+        appConfig.putStringArray("ACTIVITY_LIST", new String[]{"*"});
+        profileConfig.putParcelableArray("APP_LIST", new Bundle[]{appConfig});
+        profileConfig.remove("PLUGIN_CONFIG");
+
+        // Apply configs
+        // Use SET_CONFIG: http://techdocs.zebra.com/datawedge/latest/guide/api/setconfig/
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
+
+        // Configure intent output for captured data to be sent to this app
+        Bundle intentConfig = new Bundle();
+        intentConfig.putString("PLUGIN_NAME", "INTENT");
+        intentConfig.putString("RESET_CONFIG", "true");
+        Bundle intentProps = new Bundle();
+        intentProps.putString("intent_output_enabled", "true");
+        intentProps.putString("intent_action", "com.zebra.datacapture1.ACTION");
+        intentProps.putString("intent_delivery", "2");
+        intentConfig.putBundle("PARAM_LIST", intentProps);
+        profileConfig.putBundle("PLUGIN_CONFIG", intentConfig);
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
+
+        Toast.makeText(getApplicationContext(), "Created profile.  Check DataWedge app UI.", Toast.LENGTH_LONG).show();
+    }
+
+    /*
+     * configure the Zebra scanner for our operational mode with code 128, code 39, upca, and ean13
+     * codes enabled
+     */
+    private void ConfigureZebraScanner() {
+        Log.i(LOG_TAG, "Configuring Zebra Scanner mode");
+        // Main bundle properties
+        Bundle profileConfig = new Bundle();
+        profileConfig.putString("PROFILE_NAME", EXTRA_PROFILENAME);
+        profileConfig.putString("PROFILE_ENABLED", "true");
+        profileConfig.putString("CONFIG_MODE", "UPDATE");  // Update specified settings in profile
+
+        // PLUGIN_CONFIG bundle properties
+        Bundle barcodeConfig = new Bundle();
+        barcodeConfig.putString("PLUGIN_NAME", "BARCODE");
+        barcodeConfig.putString("RESET_CONFIG", "true");
+
+        // PARAM_LIST bundle properties
+        Bundle barcodeProps = new Bundle();
+        barcodeProps.putString("scanner_selection", "auto");
+        barcodeProps.putString("scanner_input_enabled", "true");
+        barcodeProps.putString("decoder_code128", "true");
+        barcodeProps.putString("decoder_code39", "true");
+        barcodeProps.putString("decoder_ean13", "true");
+        barcodeProps.putString("decoder_upca", "true");
+
+        // Bundle "barcodeProps" within bundle "barcodeConfig"
+        barcodeConfig.putBundle("PARAM_LIST", barcodeProps);
+        // Place "barcodeConfig" bundle within main "profileConfig" bundle
+        profileConfig.putBundle("PLUGIN_CONFIG", barcodeConfig);
+
+        // Create APP_LIST bundle to associate app with profile
+        Bundle appConfig = new Bundle();
+        appConfig.putString("PACKAGE_NAME", getPackageName());
+        appConfig.putStringArray("ACTIVITY_LIST", new String[]{"*"});
+        profileConfig.putParcelableArray("APP_LIST", new Bundle[]{appConfig});
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SET_CONFIG, profileConfig);
+        Toast.makeText(getApplicationContext(), "In profile " + EXTRA_PROFILENAME, Toast.LENGTH_LONG).show();
+    }
+
+    // Toggle soft scan trigger from UI onClick() event
+    // Use SOFT_SCAN_TRIGGER: http://techdocs.zebra.com/datawedge/latest/guide/api/softscantrigger/
+    public void ToggleSoftScanTrigger (View view){
+        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SOFT_SCAN_TRIGGER, "TOGGLE_SCANNING");
+    }
+
+    // Create filter for the broadcast intent
+    private void registerReceivers() {
+
+        Log.d(LOG_TAG, "registerReceivers()");
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(ACTION_RESULT_NOTIFICATION);   // for notification result
+        filter.addAction(ACTION_RESULT);                // for error code result
+        filter.addCategory(Intent.CATEGORY_DEFAULT);    // needed to get version info
+
+        // register to received broadcasts via DataWedge scanning
+        filter.addAction(getResources().getString(R.string.activity_intent_filter_action));
+        filter.addAction(getResources().getString(R.string.activity_action_from_service));
+        registerReceiver(myBroadcastReceiver, filter);
+    }
+
+    // Unregister scanner status notification
+    public void unRegisterScannerStatus() {
+        Log.d(LOG_TAG, "unRegisterScannerStatus()");
+        Bundle b = new Bundle();
+        b.putString(EXTRA_KEY_APPLICATION_NAME, getPackageName());
+        b.putString(EXTRA_KEY_NOTIFICATION_TYPE, EXTRA_KEY_VALUE_SCANNER_STATUS);
+        Intent i = new Intent();
+        i.setAction(ACTION);
+        i.putExtra(EXTRA_UNREGISTER_NOTIFICATION, b);
+        this.sendBroadcast(i);
+    }
+
+
     private void DisplayImageURL(String barcode) {
         SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
         String host = sharedPref.getString(getString(R.string.pref_url_key), "athena.cmacu.net");
         StringBuilder url = new StringBuilder(host);
         url.append("/cgi-bin/vmwmsgs.pl?command=Retrieve&name=wanted.jpg&SerialNum=");
         url.append(barcode);
-        Log.i(LOG_TAG,"URL: "+url.toString());
+        Log.i(LOG_TAG,"URL: "+ url);
         webViewClient = new LookupWebViewClient(pageTimeout);
         myWebView.setWebViewClient(webViewClient);
         loadUrl(url.toString());
@@ -259,7 +485,7 @@ public class BarcodeActivity extends AppCompatActivity {
                     }
                 }
             };
-            timeoutHandler.postDelayed(run, this.timeout*1000);
+            timeoutHandler.postDelayed(run, this.timeout* 1000L);
         }
 
         @Override
@@ -332,7 +558,148 @@ public class BarcodeActivity extends AppCompatActivity {
             }
         }
 
+    }
 
+
+    private BroadcastReceiver myBroadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            Bundle b = intent.getExtras();
+
+            Log.d(LOG_TAG, "DataWedge Action:" + action);
+
+            // Get DataWedge version info
+            if (intent.hasExtra(EXTRA_RESULT_GET_VERSION_INFO))
+            {
+                Bundle versionInfo = intent.getBundleExtra(EXTRA_RESULT_GET_VERSION_INFO);
+                String DWVersion = versionInfo.getString("DATAWEDGE");
+
+                TextView txtDWVersion = findViewById(R.id.txtGetDWVersion);
+                txtDWVersion.setText(DWVersion);
+                Log.i(LOG_TAG, "DataWedge Version: " + DWVersion);
+            }
+
+            if (action.equals(getResources().getString(R.string.activity_intent_filter_action)))
+            {
+                //  Received a barcode scan
+                try
+                {
+                    displayScanResult(intent, "via Broadcast");
+                }
+                catch (Exception e)
+                {
+                    //  Catch error if the UI does not exist when we receive the broadcast...
+                }
+            }
+
+            else if (action.equals(ACTION_RESULT))
+            {
+                // Register to receive the result code
+                if ((intent.hasExtra(EXTRA_RESULT)) && (intent.hasExtra(EXTRA_COMMAND)))
+                {
+                    String command = intent.getStringExtra(EXTRA_COMMAND);
+                    String result = intent.getStringExtra(EXTRA_RESULT);
+                    String info = "";
+
+                    if (intent.hasExtra(EXTRA_RESULT_INFO))
+                    {
+                        Bundle result_info = intent.getBundleExtra(EXTRA_RESULT_INFO);
+                        Set<String> keys = result_info.keySet();
+                        for (String key : keys) {
+                            Object object = result_info.get(key);
+                            if (object instanceof String) {
+                                info += key + ": " + object + "\n";
+                            } else if (object instanceof String[]) {
+                                String[] codes = (String[]) object;
+                                for (String code : codes) {
+                                    info += key + ": " + code + "\n";
+                                }
+                            }
+                        }
+                        Log.d(LOG_TAG, "Command: "+command+"\n" +
+                                "Result: " +result+"\n" +
+                                "Result Info: " + info + "\n");
+                        Toast.makeText(getApplicationContext(), "Error Resulted. Command:" + command + "\nResult: " + result + "\nResult Info: " +info, Toast.LENGTH_LONG).show();
+                    }
+                }
+
+            }
+
+            // Register for scanner change notification
+            else if (action.equals(ACTION_RESULT_NOTIFICATION))
+            {
+                if (intent.hasExtra(EXTRA_RESULT_NOTIFICATION))
+                {
+                    Bundle extras = intent.getBundleExtra(EXTRA_RESULT_NOTIFICATION);
+                    String notificationType = extras.getString(EXTRA_RESULT_NOTIFICATION_TYPE);
+                    if (notificationType != null)
+                    {
+                        switch (notificationType) {
+                            case EXTRA_KEY_VALUE_SCANNER_STATUS:
+                                // Change in scanner status occurred
+                                String displayScannerStatusText = extras.getString(EXTRA_KEY_VALUE_NOTIFICATION_STATUS) +
+                                        ", profile: " + extras.getString(EXTRA_KEY_VALUE_NOTIFICATION_PROFILE_NAME);
+                                //Toast.makeText(getApplicationContext(), displayScannerStatusText, Toast.LENGTH_SHORT).show();
+                                final TextView lblScannerStatus = findViewById(R.id.lblScannerStatus);
+                                lblScannerStatus.setText(displayScannerStatusText);
+                                Log.i(LOG_TAG, "Scanner status: " + displayScannerStatusText);
+                                break;
+
+                            case EXTRA_KEY_VALUE_PROFILE_SWITCH:
+                                // Received change in profile
+                                // For future enhancement
+                                break;
+
+                            case  EXTRA_KEY_VALUE_CONFIGURATION_UPDATE:
+                                // Configuration change occurred
+                                // For future enhancement
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    private void displayScanResult(Intent initiatingIntent, String howDataReceived)
+    {
+        // store decoded data
+        String decodedData = initiatingIntent.getStringExtra(getResources().getString(R.string.datawedge_intent_key_data));
+        // store decoder type
+        String decodedLabelType = initiatingIntent.getStringExtra(getResources().getString(R.string.datawedge_intent_key_label_type));
+
+        final TextView lblScanData = findViewById(R.id.lblScanData);
+        final TextView lblScanLabelType = findViewById(R.id.lblScanDecoder);
+
+        lblScanData.setText(decodedData);
+        lblScanLabelType.setText(decodedLabelType);
+
+        // Re-use existing uihandler
+        Message msg = uiUpdateHandler.obtainMessage();
+        msg.arg1 = BarcodeActivity.MESSAGE_BARCODE_STRING;
+        msg.obj = decodedData;
+        uiUpdateHandler.sendMessage(msg);
+    }
+
+    private void sendDataWedgeIntentWithExtra(String action, String extraKey, Bundle extras)
+    {
+        Intent dwIntent = new Intent();
+        dwIntent.setAction(action);
+        dwIntent.putExtra(extraKey, extras);
+        if (bRequestSendResult)
+            dwIntent.putExtra(EXTRA_SEND_RESULT, "true");
+        this.sendBroadcast(dwIntent);
+    }
+
+    private void sendDataWedgeIntentWithExtra(String action, String extraKey, String extraValue)
+    {
+        Intent dwIntent = new Intent();
+        dwIntent.setAction(action);
+        dwIntent.putExtra(extraKey, extraValue);
+        if (bRequestSendResult)
+            dwIntent.putExtra(EXTRA_SEND_RESULT, "true");
+        this.sendBroadcast(dwIntent);
     }
 
     /* (non-Javadoc)
@@ -344,13 +711,6 @@ public class BarcodeActivity extends AppCompatActivity {
 
         Log.i(LOG_TAG, "onDestroy");
         uiUpdateHandler = null;
-        lb.close();
-
-        // Kill process to clean up Zebra usb interface.
-
-        int pid = android.os.Process.myPid();
-        android.os.Process.killProcess(pid);
-
     }
 
     /* (non-Javadoc)
@@ -360,10 +720,6 @@ public class BarcodeActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         Log.i(LOG_TAG, "onStart");
-        if (lb != null) {
-            lb.probe();
-            //setProgrammingState(false);
-        }
     }
 
     /* (non-Javadoc)
@@ -372,13 +728,8 @@ public class BarcodeActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-
         Log.i(LOG_TAG, "onResume");
-        if (lb != null) {
-            bl = new BarcodeListener(this, uiUpdateHandler);
-            lb.resume();
-        }
-
+        registerReceivers();
     }
 
     /* (non-Javadoc)
@@ -387,11 +738,15 @@ public class BarcodeActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         Log.i(LOG_TAG, "onPause");
-        if (lb != null) {
-            lb.pause();
-        }
         super.onPause();
+        unregisterReceiver(myBroadcastReceiver);
+        unRegisterScannerStatus();
     }
 
+    @Override
+    protected void onStop()
+    {
+        super.onStop();
+    }
 
 }

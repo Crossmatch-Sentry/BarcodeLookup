@@ -5,6 +5,7 @@ import android.support.v7.app.AppCompatActivity;
 
 public class SettingsActivity extends AppCompatActivity {
     public static final String KEY_PREF_URL = "url_preference";
+    public static final String KEY_PREF_SCANTIME = "scantime_preference";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

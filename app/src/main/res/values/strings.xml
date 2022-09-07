@@ -9,7 +9,7 @@
     <string name="wifi_linkspeed">0</string>
     <string name="barcode">--Barcode--</string>
     <string name="CONNECTING_TITLE">Lookup</string>
-    <string name="CONNECTING_MSG">Loading...</string>
+    <string name="CONNECTING_MSG">Loading…</string>
     <string name="TIMEOUT_MSG">Timed out</string>
     <string name="SERVER_ERROR_MESSAGE">Server error</string>
     <string name="TIMEOUT_TITLE">Timeout</string>
@@ -22,4 +22,23 @@
     <string name="url_summary">hostname or IP address</string>
     <string name="title_activity_settings">Settings</string>
     <string name="default_url">http://athena.cmacu.net</string>
+    <string name="activity_intent_filter_action">com.zebra.datacapture1.ACTION</string>
+    <string name="activity_action_from_service">com.zebra.datacapture1.service.ACTION</string>
+    <string name="datawedge_intent_key_source">com.symbol.datawedge.source</string>
+    <string name="datawedge_intent_key_label_type">com.symbol.datawedge.label_type</string>
+    <string name="datawedge_intent_key_data">com.symbol.datawedge.data_string</string>
+    <string name="data_wedge_title">DataWedge version:</string>
+    <string name="scanner_status_title">Scanner Status:</string>
+    <string name="scanner_status">Display scanner status</string>
+    <string name="scanner_decoder_title">Scan Decoder:</string>
+    <string name="scanner_decoder">Display decoder scanned</string>
+    <string name="scanner_data_title">Scan Data:</string>
+    <string name="scanner_data">Display scanned data</string>
+    <string name="scan_btn_text">Single Scan</string>
+    <string name="autoscan_btn_text">Auto Scan</string>
+    <string name="autoscan_start_btn">Start</string>
+    <string name="autoscan_stop_btn">Stop</string>
+    <string name="pref_scantime_key">scantime_preference</string>
+    <string name="pref_scantime_title">Auto Scan time (seconds)</string>
+    <string name="pref_scantime_summary">time between scans in seconds</string>
 </resources>

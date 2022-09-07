@@ -13,13 +13,23 @@ android {
     defaultConfig {
         applicationId "com.crossmatch.barcodelookup"
         minSdkVersion 22
+        //noinspection ExpiredTargetSdkVersion
         targetSdkVersion 27
-        versionCode 2
-        versionName '2.1'
+        versionCode 3
+        versionName '3.1'
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        signingConfig signingConfigs.Sentry
     }
     buildTypes {
         release {
+            android {
+                lintOptions {
+                    checkReleaseBuilds false
+                    // Or, if you prefer, you can continue to check for errors in release builds,
+                    // but continue the build even when errors are found:
+                    abortOnError false
+                }
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.Sentry
@@ -40,6 +50,4 @@ dependencies {
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'com.android.support.test:runner:1.0.2'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
-    implementation project(path: ':barcode_scanner_library_v2.4.2.0')
-    implementation project(path: ':libbarcode-release')
 }
