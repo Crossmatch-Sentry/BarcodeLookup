@@ -1,6 +1,5 @@
 package com.crossmatch.barcodelookup;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.Context;
@@ -11,18 +10,21 @@ import android.graphics.Bitmap;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.os.PowerManager;
 import android.preference.PreferenceManager;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.View;
 import android.view.Window;
-import android.webkit.*;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -30,17 +32,21 @@ import com.crossmatch.libbarcode.LibBarcode;
 import com.crossmatch.libbarcode.LibBarcode.Devices;
 
 import java.util.Timer;
+import java.util.TimerTask;
 
-public class BarcodeActivity extends AppCompatActivity {
+public class BarcodeActivity extends AppCompatActivity  {
 
     private static final String LOG_TAG = "BarcodeActivity";
     //private static String lookupBaseURL = "http://athena.cmacu.net/cgi-bin/vmwmsgs.pl?command=Retrieve&name=wanted.jpg";
 
     private int pageTimeout = 10;     // how long to wait (in seconds) for the image to load
+    volatile boolean autoScanThread = false;
 
     private TextView barcodeText;
     public static LibBarcode lb;
-    public static BarcodeListener bl;
+    public  BarcodeListener bl;
+    private Button singleScanButton;
+    private Button autoScanButton;
     public static Handler uiUpdateHandler;
 
     public static final int MESSAGE_BARCODE_STRING = 1;
@@ -62,6 +68,7 @@ public class BarcodeActivity extends AppCompatActivity {
     private TextView rssiText;
     private TextView ssidText;
     private Timer timer;
+    private TimerTask timerTask;
     private ProgressDialog progressLoadUrl;
     private LookupWebViewClient webViewClient;
 
@@ -77,18 +84,20 @@ public class BarcodeActivity extends AppCompatActivity {
 
         PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
 
-        barcodeText = (TextView) findViewById(R.id.console);
+        barcodeText = findViewById(R.id.console);
         //barcodeText.setText("Barcode Lookup");
-        rssiText = (TextView) findViewById(R.id.textViewrssi);
-        ssidText = (TextView)findViewById(R.id.textViewssid);
-        linkspeedText = (TextView)findViewById(R.id.textViewspeed);
-        myWebView = (WebView)findViewById(R.id.webview);
+        rssiText = findViewById(R.id.textViewrssi);
+        ssidText = findViewById(R.id.textViewssid);
+        linkspeedText = findViewById(R.id.textViewspeed);
+        myWebView = findViewById(R.id.webview);
+        singleScanButton = findViewById(R.id.scan_button);
+        autoScanButton = findViewById(R.id.autoscan_btn);
 
         if (lb != null) lb.close();
         lb = new LibBarcode(this, Devices.BARCODE_JE227);
 
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        wl = pm.newWakeLock(PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "CMBARCODE");
+        wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "CMBARCODE:hidwl");
 
         wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
 
@@ -181,13 +190,77 @@ public class BarcodeActivity extends AppCompatActivity {
         }
     }
 
+
+    // Toggle soft scan trigger from UI onClick() event
+    // Use SOFT_SCAN_TRIGGER: http://techdocs.zebra.com/datawedge/latest/guide/api/softscantrigger/
+    public void AutoScanEnable (View view){
+        Log.i(LOG_TAG,"Configure auto scan.");
+        if (autoScanThread) {
+            Log.i(LOG_TAG,"Stopping auto scan...");
+            lb.triggerCapture(LibBarcode.TriggerCapture.STOP);
+            autoScanButton.setText(R.string.autoscan_start_btn);
+            singleScanButton.setEnabled(true);
+            autoScanThread = false;
+            stoptimertask(view);
+        } else {
+            Log.i(LOG_TAG,"Starting auto scan...");
+            autoScanButton.setText(R.string.autoscan_stop_btn);
+            singleScanButton.setEnabled(false);
+            startTimer();
+        }
+    }
+
+    public void startTimer() {
+        timer = new Timer();
+
+        //initialize the TimerTask's job
+        initializeTimerTask();
+
+        Log.i(LOG_TAG, "Auto scan timer starts: "+ autoScanThread);
+
+        SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
+        String scantime = sharedPref.getString(getString(R.string.pref_scantime_key), "60");
+        //schedule the timer, after the first 5000ms the TimerTask will run every 30000ms
+        timer.schedule(timerTask, 5000, Integer.parseInt(scantime) * 1000L);
+    }
+
+    public void stoptimertask(View v) {
+        Log.i(LOG_TAG, "Stopping timer task");
+        //stop the timer, if it's not already null
+        if (timer != null) {
+            timer.cancel();
+            timer = null;
+        }
+    }
+
+    public void initializeTimerTask() {
+        autoScanThread = true;
+        timerTask = new TimerTask() {
+            public void run() {
+
+                //use a handler to run a toast that shows the current timestamp
+                uiUpdateHandler.post(new Runnable() {
+                    public void run() {
+                        lb.triggerCapture(LibBarcode.TriggerCapture.START);
+                    }
+                });
+            }
+        };
+    }
+
+    // Toggle soft scan trigger from UI onClick() event
+    // Use SOFT_SCAN_TRIGGER: http://techdocs.zebra.com/datawedge/latest/guide/api/softscantrigger/
+    public void ToggleSoftScanTrigger (View view){
+        lb.triggerCapture(LibBarcode.TriggerCapture.START);
+    }
+
     private void DisplayImageURL(String barcode) {
         SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
         String host = sharedPref.getString(getString(R.string.pref_url_key), "athena.cmacu.net");
         StringBuilder url = new StringBuilder(host);
         url.append("/cgi-bin/vmwmsgs.pl?command=Retrieve&name=wanted.jpg&SerialNum=");
         url.append(barcode);
-        Log.i(LOG_TAG,"URL: "+url.toString());
+        Log.i(LOG_TAG,"URL: "+ url);
         webViewClient = new LookupWebViewClient(pageTimeout);
         myWebView.setWebViewClient(webViewClient);
         loadUrl(url.toString());
@@ -259,7 +332,7 @@ public class BarcodeActivity extends AppCompatActivity {
                     }
                 }
             };
-            timeoutHandler.postDelayed(run, this.timeout*1000);
+            timeoutHandler.postDelayed(run, this.timeout* 1000L);
         }
 
         @Override
@@ -374,6 +447,10 @@ public class BarcodeActivity extends AppCompatActivity {
         super.onResume();
 
         Log.i(LOG_TAG, "onResume");
+        // restart auto scan if it was enabled
+        if (autoScanThread) {
+            startTimer();
+        }
         if (lb != null) {
             bl = new BarcodeListener(this, uiUpdateHandler);
             lb.resume();

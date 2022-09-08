@@ -8,4 +8,11 @@
         android:singleLine="true"
         android:summary="@string/url_summary"
         android:title="@string/url_title" />
+    <EditTextPreference
+        android:defaultValue="60    "
+        android:key="scantime_preference"
+        android:selectAllOnFocus="true"
+        android:singleLine="true"
+        android:summary="@string/pref_scantime_summary"
+        android:title="@string/pref_scantime_title" />
 </PreferenceScreen>

@@ -28,6 +28,7 @@ public class SettingsFragment extends PreferenceFragmentCompat implements Shared
 
 
         onSharedPreferenceChanged(sharedPreferences, SettingsActivity.KEY_PREF_URL);
+        onSharedPreferenceChanged(sharedPreferences, SettingsActivity.KEY_PREF_SCANTIME);
 
     }
 
@@ -47,6 +48,13 @@ public class SettingsFragment extends PreferenceFragmentCompat implements Shared
 
             EditTextPreference pref;
             pref = (EditTextPreference) findPreference(SettingsActivity.KEY_PREF_URL);
+            pref.setSummary(pref.getText());
+
+        }
+        if (key.equals(SettingsActivity.KEY_PREF_SCANTIME)) {
+
+            EditTextPreference pref;
+            pref = (EditTextPreference) findPreference(SettingsActivity.KEY_PREF_SCANTIME);
             pref.setSummary(pref.getText());
 
         }
