@@ -32,10 +32,11 @@ import android.widget.Toast;
 
 import java.util.Timer;
 import java.util.Set;
+import java.util.TimerTask;
 
 import static android.provider.ContactsContract.Intents.Insert.ACTION;
 
-public class BarcodeActivity extends AppCompatActivity implements Runnable {
+public class BarcodeActivity extends AppCompatActivity  {
 
     private static final String LOG_TAG = "BarcodeActivity";
     //private static String lookupBaseURL = "http://athena.cmacu.net/cgi-bin/vmwmsgs.pl?command=Retrieve&name=wanted.jpg";
@@ -105,6 +106,7 @@ public class BarcodeActivity extends AppCompatActivity implements Runnable {
     private TextView rssiText;
     private TextView ssidText;
     private Timer timer;
+    private TimerTask timerTask;
     private ProgressDialog progressLoadUrl;
     private LookupWebViewClient webViewClient;
 
@@ -244,47 +246,60 @@ public class BarcodeActivity extends AppCompatActivity implements Runnable {
         }
     }
 
-    public void startThread ()
-    {
-        tAutoScan = new Thread(this);
-        autoScanThread = true;
-        tAutoScan.start();
-    }
-
-    public void run() {
-        Log.i(LOG_TAG, "Background timer thread starts: "+ autoScanThread);
-
-        SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
-        String scantime = sharedPref.getString(getString(R.string.pref_scantime_key), "60");
-
-        while(autoScanThread) {
-            Log.i(LOG_TAG,"Start new scan every " +  scantime + " seconds");
-            sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SOFT_SCAN_TRIGGER, "TOGGLE_SCANNING");
-            try {
-                Thread.sleep(Integer.parseInt(scantime) * 1000L);
-            } catch (InterruptedException e) {
-                Log.i(LOG_TAG,"Thread sleep timed out");
-            }
-        }
-        Log.i(LOG_TAG,"Background thread complete");
-
-    }
-
     // Toggle soft scan trigger from UI onClick() event
     // Use SOFT_SCAN_TRIGGER: http://techdocs.zebra.com/datawedge/latest/guide/api/softscantrigger/
     public void AutoScanEnable (View view){
-        Log.i(LOG_TAG,"Enabling auto scan...");
+        Log.i(LOG_TAG,"Configure auto scan.");
         if (autoScanThread) {
             Log.i(LOG_TAG,"Stopping auto scan...");
             autoScanButton.setText(R.string.autoscan_start_btn);
             singleScanButton.setEnabled(true);
             autoScanThread = false;
+            stoptimertask(view);
         } else {
             Log.i(LOG_TAG,"Starting auto scan...");
             autoScanButton.setText(R.string.autoscan_stop_btn);
             singleScanButton.setEnabled(false);
-            startThread();
+            startTimer();
         }
+    }
+
+    public void startTimer() {
+        timer = new Timer();
+
+        //initialize the TimerTask's job
+        initializeTimerTask();
+
+        Log.i(LOG_TAG, "Auto scan timer starts: "+ autoScanThread);
+
+        SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
+        String scantime = sharedPref.getString(getString(R.string.pref_scantime_key), "60");
+        //schedule the timer, after the first 5000ms the TimerTask will run every 30000ms
+        timer.schedule(timerTask, 5000, Integer.parseInt(scantime) * 1000L);
+    }
+
+    public void stoptimertask(View v) {
+        Log.i(LOG_TAG, "Stopping timer task");
+        //stop the timer, if it's not already null
+        if (timer != null) {
+            timer.cancel();
+            timer = null;
+        }
+    }
+
+    public void initializeTimerTask() {
+        autoScanThread = true;
+        timerTask = new TimerTask() {
+            public void run() {
+
+                //use a handler to run a toast that shows the current timestamp
+                uiUpdateHandler.post(new Runnable() {
+                    public void run() {
+                        sendDataWedgeIntentWithExtra(ACTION_DATAWEDGE, EXTRA_SOFT_SCAN_TRIGGER, "TOGGLE_SCANNING");
+                    }
+                });
+            }
+        };
     }
 
     private void CreateZebraDWProfile() {
@@ -729,6 +744,10 @@ public class BarcodeActivity extends AppCompatActivity implements Runnable {
     protected void onResume() {
         super.onResume();
         Log.i(LOG_TAG, "onResume");
+        // restart auto scan if it was enabled
+        if (autoScanThread) {
+            startTimer();
+        }
         registerReceivers();
     }
 

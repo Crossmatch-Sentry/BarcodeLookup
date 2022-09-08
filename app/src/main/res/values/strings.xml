@@ -36,8 +36,8 @@
     <string name="scanner_data">Display scanned data</string>
     <string name="scan_btn_text">Single Scan</string>
     <string name="autoscan_btn_text">Auto Scan</string>
-    <string name="autoscan_start_btn">Start</string>
-    <string name="autoscan_stop_btn">Stop</string>
+    <string name="autoscan_start_btn">Auto Start</string>
+    <string name="autoscan_stop_btn">Auto Stop</string>
     <string name="pref_scantime_key">scantime_preference</string>
     <string name="pref_scantime_title">Auto Scan time (seconds)</string>
     <string name="pref_scantime_summary">time between scans in seconds</string>
