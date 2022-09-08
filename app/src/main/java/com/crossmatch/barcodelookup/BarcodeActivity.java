@@ -464,6 +464,10 @@ public class BarcodeActivity extends AppCompatActivity  {
     @Override
     protected void onPause() {
         Log.i(LOG_TAG, "onPause");
+        // stop the auto scan timer if it's running
+        if (autoScanThread) {
+            stoptimertask(getWindow().getDecorView().getRootView());
+        }
         if (lb != null) {
             lb.pause();
         }
